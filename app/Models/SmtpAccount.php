@@ -196,6 +196,14 @@ class SmtpAccount extends Model
     }
 
     /**
+     * Sent emails relationship
+     */
+    public function sentEmails()
+    {
+        return $this->hasMany(CampaignSendLog::class);
+    }
+
+    /**
      * Scope for default account
      */
     public function scopeDefault($query)
