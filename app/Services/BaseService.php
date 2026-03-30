@@ -24,14 +24,10 @@ abstract class BaseService
         
         if ($validator->fails()) {
             $this->errors = $validator->errors()->toArray();
-            return false
+            return false;
         }
         
         return true;
     }
 
-    protected function getErrors(): array
-    {
-        return $this->errors;
-    }
 }

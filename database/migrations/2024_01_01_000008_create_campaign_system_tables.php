@@ -8,67 +8,20 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Campaign Subscriber pivot with status
-        Schema::create('campaign_subscribers', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('campaign_id')->constrained()->onDelete('cascade');
-            $table->foreignId('subscriber_id')->constrained()->onDelete('cascade');
-            $table->foreignId('smtp_account_id')->nullable()->constrained()->onDelete('set null');
-            $table->enum('status', ['pending', 'sending', 'sent', 'opened', 'clicked', 'bounced', 'failed'])->default('pending');
-            $table->timestamp('sent_at')->nullable();
-            $table->timestamp('opened_at')->nullable();
-            $table->timestamp('clicked_at')->nullable();
-            $table->timestamp('bounced_at')->nullable();
-            $table->text('bounce_reason')->nullable();
-            $table->string('message_id')->nullable(); // Email message ID
-            $table->string('tracking_token')->unique(); // For open/click tracking
-            $table->integer('send_order')->default(0);
-            $table->timestamps();
-            $table->unique(['campaign_id', 'subscriber_id']);
-            $table->index(['campaign_id', 'status']);
-        });
+        // Campaign Subscriber table already created in 2024_01_01_000007_create_campaign_subscribers_table.php
 
-        // Campaign Scheduling
-        Schema::table('campaigns', function (Blueprint $table) {
-            $table->timestamp('scheduled_at')->nullable()->change();
-            $table->timestamp('started_at')->nullable()->after('scheduled_at');
-            $table->timestamp('completed_at')->nullable()->after('started_at');
-            $table->integer('batch_size')->default(50)->after('completed_at');
-            $table->integer('batch_delay')->default(1000)->after('batch_size'); // milliseconds
-        });
+        // Campaign Scheduling - columns already exist from previous migrations
+        // Schema::table('campaigns', function (Blueprint $table) {
+        //     $table->timestamp('scheduled_at')->nullable()->change();
+        //     $table->timestamp('started_at')->nullable()->after('scheduled_at');
+        //     $table->timestamp('completed_at')->nullable()->after('started_at');
+        //     $table->integer('batch_size')->default(50)->after('completed_at');
+        //     $table->integer('batch_delay')->default(1000)->after('batch_size'); // milliseconds
+        // });
 
-        // A/B Testing
-        Schema::create('campaign_ab_tests', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('campaign_id')->constrained()->onDelete('cascade');
-            $table->string('variant_a_subject')->nullable();
-            $table->string('variant_b_subject')->nullable();
-            $table->text('variant_a_content')->nullable();
-            $table->text('variant_b_content')->nullable();
-            $table->integer('test_percentage')->default(20); // % of list to test
-            $table->integer('winner_percentage')->default(50); // % to declare winner
-            $table->enum('winner', ['a', 'b', 'none'])->default('none');
-            $table->timestamp('test_started_at')->nullable();
-            $table->timestamp('test_completed_at')->nullable();
-            $table->timestamps();
-        });
+        // A/B Testing table already created in 2024_01_01_000011_create_campaign_ab_tests_table.php
 
-        // Sending Logs
-        Schema::create('campaign_send_logs', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('campaign_id')->constrained()->onDelete('cascade');
-            $table->foreignId('subscriber_id')->nullable()->constrained()->onDelete('set null');
-            $table->foreignId('smtp_account_id')->nullable()->constrained()->onDelete('set null');
-            $table->string('message_id')->nullable();
-            $table->string('smtp_response')->nullable();
-            $table->enum('status', ['queued', 'sent', 'failed', 'bounced'])->default('queued');
-            $table->text('error_message')->nullable();
-            $table->integer('retry_count')->default(0);
-            $table->timestamp('sent_at')->nullable();
-            $table->timestamps();
-            $table->index(['campaign_id', 'status']);
-            $table->index(['status', 'created_at']);
-        });
+        // Sending Logs table already created in 2024_01_01_000008_create_campaign_send_logs_table.php
 
         // Email Templates
         Schema::create('email_templates', function (Blueprint $table) {
@@ -93,16 +46,7 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // Tracking Links
-        Schema::create('campaign_links', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('campaign_id')->constrained()->onDelete('cascade');
-            $table->string('url')->nullable(); // Original URL
-            $table->string('tracking_url')->unique(); // Encoded tracking URL
-            $table->string('label')->nullable(); // Link label
-            $table->integer('click_count')->default(0);
-            $table->timestamps();
-        });
+        // Tracking Links table already created in 2024_01_01_000009_create_campaign_links_table.php
 
         // Link Clicks
         Schema::create('campaign_link_clicks', function (Blueprint $table) {

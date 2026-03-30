@@ -9,10 +9,12 @@ use App\Http\Controllers\WarmupController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\AiController;
 use App\Http\Controllers\BillingController;
+use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\ProfileController;
 
 // Landing
 Route::get('/', function () {
-    return redirect('/login');
+    return view('welcome');
 });
 
 // Dashboard
@@ -22,6 +24,11 @@ Route::get('/dashboard', function () {
     // Redirect to onboarding if not completed
     if (!$user || !$user->hasCompletedOnboarding()) {
         return redirect()->route('onboarding.welcome');
+    }
+    
+    // Redirect admin users to admin dashboard
+    if ($user->isAdmin()) {
+        return redirect()->route('admin.users');
     }
     
     return view('dashboard');
@@ -146,6 +153,13 @@ Route::prefix('admin')->middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/settings', function () { return view('admin.settings'); })->name('admin.settings');
     Route::get('/marketplace', function () { return view('admin.marketplace'); })->name('admin.marketplace');
     Route::get('/vendors', function () { return view('admin.vendors'); })->name('admin.vendors');
+});
+
+// Profile Routes
+Route::middleware(['auth'])->group(function () {
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
 // Billing Routes
