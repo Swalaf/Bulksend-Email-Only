@@ -29,6 +29,6 @@ class SubscriberList extends Model
 
     public function subscribers()
     {
-        return $this->hasMany(Subscriber::class);
+        return $this->belongsToMany(Subscriber::class, 'subscriber_list_subscriber');
     }
 }

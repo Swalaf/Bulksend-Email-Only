@@ -14,7 +14,7 @@ class OnboardingService extends BaseService
     public function processBusinessDetails(User $user, array $data): bool
     {
         $rules = [
-            'business_name' => 'required|string|max:255',
+            'business_name' => 'nullable|string|max:255',
             'business_description' => 'nullable|string|max:1000',
             'business_website' => 'nullable|url|max:255',
         ];
@@ -24,7 +24,7 @@ class OnboardingService extends BaseService
         }
 
         $user->update([
-            'business_name' => $data['business_name'],
+            'business_name' => $data['business_name'] ?: $user->name,
             'business_description' => $data['business_description'] ?? null,
             'business_website' => $data['business_website'] ?? null,
             'onboarding_step' => 'smtp',

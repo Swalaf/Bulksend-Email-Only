@@ -11,6 +11,9 @@ use App\Http\Controllers\AiController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SubscriberController;
+use App\Http\Controllers\GDPRController;
+use App\Http\Controllers\WebhookController;
 
 // Landing
 Route::get('/', function () {
@@ -20,18 +23,29 @@ Route::get('/', function () {
 // Dashboard
 Route::get('/dashboard', function () {
     $user = auth()->user();
-    
+
     // Redirect to onboarding if not completed
     if (!$user || !$user->hasCompletedOnboarding()) {
         return redirect()->route('onboarding.welcome');
     }
-    
+
     // Redirect admin users to admin dashboard
     if ($user->isAdmin()) {
         return redirect()->route('admin.users');
     }
-    
-    return view('dashboard');
+
+    // Get dashboard stats
+    $stats = [
+        'total_campaigns' => $user->campaigns()->count(),
+        'total_subscribers' => $user->subscribers()->count(),
+        'emails_sent' => $user->campaigns()->sum('sent_count'),
+        'open_rate' => $user->campaigns()->sum('sent_count') > 0
+            ? round(($user->campaigns()->sum('opened_count') / $user->campaigns()->sum('sent_count')) * 100, 1)
+            : 0,
+        'recent_campaigns' => $user->campaigns()->latest()->limit(5)->get(),
+    ];
+
+    return view('dashboard', compact('stats'));
 })->middleware(['auth'])->name('dashboard');
 
 // Onboarding Routes
@@ -67,15 +81,20 @@ Route::prefix('smtp')->middleware(['auth'])->group(function () {
 Route::prefix('marketplace')->group(function () {
     Route::get('/', [MarketplaceController::class, 'index'])->name('marketplace.index');
     Route::get('/{id}', [MarketplaceController::class, 'show'])->name('marketplace.show');
+    Route::get('/{id}/purchase', [MarketplaceController::class, 'showPurchase'])->name('marketplace.purchase.form')->middleware('auth');
     Route::post('/{id}/favorite', [MarketplaceController::class, 'toggleFavorite'])->name('marketplace.favorite')->middleware('auth');
     Route::post('/{id}/purchase', [MarketplaceController::class, 'purchase'])->name('marketplace.purchase')->middleware('auth');
     Route::get('/purchases', [MarketplaceController::class, 'purchases'])->name('marketplace.purchases')->middleware('auth');
 });
 
 // Vendor Routes
+Route::middleware(['auth'])->group(function () {
+    Route::get('/vendor/register', function () { return view('vendor.register'); })->name('vendor.register.form');
+    Route::post('/vendor/register', [VendorController::class, 'register'])->name('vendor.register');
+});
+
 Route::prefix('vendor')->middleware(['auth', 'role:vendor,admin'])->group(function () {
     Route::get('/dashboard', [VendorController::class, 'dashboard'])->name('vendor.dashboard');
-    Route::post('/register', [VendorController::class, 'register'])->name('vendor.register');
     Route::get('/listings', function () { return view('vendor.listings'); })->name('vendor.listings');
     Route::get('/listing/create', [VendorController::class, 'createListing'])->name('vendor.listing-create');
     Route::post('/listing', [VendorController::class, 'storeListing'])->name('vendor.listing-store');
@@ -113,9 +132,17 @@ Route::prefix('templates')->middleware(['auth'])->group(function () {
 
 // Subscriber Routes
 Route::prefix('subscribers')->middleware(['auth'])->group(function () {
-    Route::get('/', function () { return view('subscribers.index'); })->name('subscribers.index');
-    Route::get('/create', function () { return view('subscribers.create'); })->name('subscribers.create');
-    Route::get('/lists', function () { return view('subscribers.lists'); })->name('subscribers.lists');
+    Route::get('/', [SubscriberController::class, 'index'])->name('subscribers.index');
+    Route::get('/create', [SubscriberController::class, 'create'])->name('subscribers.create');
+    Route::post('/', [SubscriberController::class, 'store'])->name('subscribers.store');
+    Route::get('/lists', [SubscriberController::class, 'lists'])->name('subscribers.lists');
+});
+
+// Profile Routes
+Route::middleware('auth')->group(function () {
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
 // Analytics Routes
@@ -175,6 +202,18 @@ Route::prefix('billing')->middleware(['auth'])->group(function () {
     Route::get('/credits', [BillingController::class, 'credits'])->name('billing.credits');
     Route::post('/credits/purchase', [BillingController::class, 'purchaseCredits'])->name('billing.credits.purchase');
 });
+
+// GDPR Compliance Routes
+Route::prefix('gdpr')->middleware(['auth'])->group(function () {
+    Route::get('/', [GDPRController::class, 'dataPortability'])->name('gdpr.index');
+    Route::post('/export', [GDPRController::class, 'exportData'])->name('gdpr.export');
+    Route::get('/download/{filename}', [GDPRController::class, 'downloadExport'])->name('gdpr.download');
+    Route::post('/delete', [GDPRController::class, 'requestDeletion'])->name('gdpr.delete');
+    Route::post('/cancel-delete', [GDPRController::class, 'cancelDeletion'])->name('gdpr.cancel-delete');
+});
+
+// Stripe Webhooks (no auth required)
+Route::post('/webhooks/stripe', [App\Http\Controllers\WebhookController::class, 'handleStripeWebhook']);
 
 require __DIR__.'/auth.php';
 

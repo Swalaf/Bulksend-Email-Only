@@ -33,9 +33,9 @@ class Subscriber extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function subscriberList()
+    public function lists()
     {
-        return $this->belongsTo(SubscriberList::class);
+        return $this->belongsToMany(SubscriberList::class, 'subscriber_list_subscriber');
     }
 
     public function analytics()

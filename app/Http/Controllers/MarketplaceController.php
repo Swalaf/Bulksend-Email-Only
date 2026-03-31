@@ -60,6 +60,19 @@ class MarketplaceController extends Controller
     }
 
     /**
+     * Show purchase form
+     */
+    public function showPurchase(int $id): View
+    {
+        $listing = \App\Models\MarketplaceListing::with('vendor')
+            ->findOrFail($id);
+
+        return view('marketplace.purchase', [
+            'listing' => $listing,
+        ]);
+    }
+
+    /**
      * Toggle favorite
      */
     public function toggleFavorite(int $id): RedirectResponse

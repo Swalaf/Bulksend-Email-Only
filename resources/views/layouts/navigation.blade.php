@@ -30,6 +30,9 @@
                     <x-nav-link :href="route('analytics.index')" :active="request()->routeIs('analytics.*')">
                         {{ __('Analytics') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('marketplace.index')" :active="request()->routeIs('marketplace.*')">
+                        {{ __('Marketplace') }}
+                    </x-nav-link>
                 </div>
             </div>
 
@@ -101,6 +104,9 @@
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('analytics.index')" :active="request()->routeIs('analytics.*')">
                 {{ __('Analytics') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('marketplace.index')" :active="request()->routeIs('marketplace.*')">
+                {{ __('Marketplace') }}
             </x-responsive-nav-link>
         </div>
 

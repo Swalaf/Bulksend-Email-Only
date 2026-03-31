@@ -50,13 +50,12 @@
                         <!-- Business Name -->
                         <div>
                             <label for="business_name" class="block text-sm font-medium text-gray-700 mb-2">
-                                Business Name <span class="text-red-500">*</span>
+                                Business Name
                             </label>
-                            <input type="text" 
-                                   name="business_name" 
+                            <input type="text"
+                                   name="business_name"
                                    id="business_name"
                                    value="{{ old('business_name', $business['name'] ?? '') }}"
-                                   required
                                    class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
                                    placeholder="Your Company Name">
                             @error('business_name')

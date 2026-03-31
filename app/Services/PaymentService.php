@@ -9,41 +9,124 @@ use App\Models\PaymentMethod;
 use App\Models\Invoice;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\Log;
+use Stripe\StripeClient;
+use Stripe\Exception\ApiErrorException;
 
 class PaymentService
 {
-    private string $provider;
+    protected StripeClient $stripe;
 
     public function __construct()
     {
-        $this->provider = config('billing.provider', 'stripe');
+        $this->stripe = new StripeClient(config('services.stripe.secret'));
     }
 
     /**
-     * Initialize customer in payment provider
+     * Initialize customer in Stripe
      */
     public function createCustomer(User $user): string
     {
-        // In production, this would call Stripe API
-        // For now, return a mock customer ID
-        Log::info("Creating customer for user {$user->id}");
-        
-        return 'cus_' . uniqid();
+        try {
+            $customer = $this->stripe->customers->create([
+                'email' => $user->email,
+                'name' => $user->name,
+                'metadata' => [
+                    'user_id' => $user->id,
+                ],
+            ]);
+
+            $user->update(['stripe_customer_id' => $customer->id]);
+
+            Log::info("Created Stripe customer for user {$user->id}: {$customer->id}");
+            return $customer->id;
+
+        } catch (ApiErrorException $e) {
+            Log::error('Stripe customer creation failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            throw new \Exception('Failed to create payment customer: ' . $e->getMessage());
+        }
     }
 
     /**
-     * Create subscription in payment provider
+     * Get or create Stripe customer
      */
-    public function createSubscription(User $user, Plan $plan, string $paymentMethodId): array
+    protected function getOrCreateStripeCustomer(User $user)
     {
-        // In production, this would call Stripe API
-        Log::info("Creating subscription for user {$user->id} with plan {$plan->slug}");
+        if ($user->stripe_customer_id) {
+            try {
+                return $this->stripe->customers->retrieve($user->stripe_customer_id);
+            } catch (ApiErrorException $e) {
+                // Customer doesn't exist, create new one
+            }
+        }
 
-        return [
-            'subscription_id' => 'sub_' . uniqid(),
-            'status' => 'active',
-            'current_period_end' => now()->addDays($plan->billing_period)->toIso8601String(),
-        ];
+        return $this->stripe->customers->create([
+            'email' => $user->email,
+            'name' => $user->name,
+            'metadata' => [
+                'user_id' => $user->id,
+            ],
+        ]);
+    }
+
+    /**
+     * Create subscription in Stripe
+     */
+    public function createSubscription(User $user, Plan $plan, string $paymentMethodId): ?Subscription
+    {
+        try {
+            $customer = $this->getOrCreateStripeCustomer($user);
+
+            // Create subscription in Stripe
+            $stripeSubscription = $this->stripe->subscriptions->create([
+                'customer' => $customer->id,
+                'items' => [
+                    [
+                        'price_data' => [
+                            'currency' => 'usd',
+                            'product_data' => [
+                                'name' => $plan->name,
+                                'description' => $plan->description,
+                            ],
+                            'unit_amount' => $plan->price * 100, // Convert to cents
+                            'recurring' => [
+                                'interval' => 'month',
+                            ],
+                        ],
+                    ],
+                ],
+                'default_payment_method' => $paymentMethodId,
+                'expand' => ['latest_invoice.payment_intent'],
+            ]);
+
+            // Create local subscription
+            $subscription = Subscription::create([
+                'user_id' => $user->id,
+                'plan_id' => $plan->id,
+                'stripe_subscription_id' => $stripeSubscription->id,
+                'status' => $stripeSubscription->status,
+                'current_period_start' => now()->createFromTimestamp($stripeSubscription->current_period_start),
+                'current_period_end' => now()->createFromTimestamp($stripeSubscription->current_period_end),
+                'trial_ends_at' => $plan->trial_days ? now()->addDays($plan->trial_days) : null,
+            ]);
+
+            // Create invoice for first payment
+            if ($stripeSubscription->latest_invoice) {
+                $this->createInvoiceFromStripe($user, $stripeSubscription->latest_invoice);
+            }
+
+            return $subscription;
+
+        } catch (ApiErrorException $e) {
+            Log::error('Stripe subscription creation failed', [
+                'user_id' => $user->id,
+                'plan_id' => $plan->id,
+                'error' => $e->getMessage(),
+            ]);
+            throw new \Exception('Failed to create subscription: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -56,16 +139,40 @@ class PaymentService
     }
 
     /**
-     * Create payment intent for adding credits
+     * Create payment intent for credits or purchases
      */
-    public function createPaymentIntent(User $user, float $amount, string $currency = 'usd'): array
+    public function createPaymentIntent(User $user, float $amount, string $currency = 'usd', string $description = ''): array
     {
-        Log::info("Creating payment intent for user {$user->id}: {$amount} {$currency}");
+        try {
+            $customer = $this->getOrCreateStripeCustomer($user);
 
-        return [
-            'client_secret' => 'pi_' . uniqid() . '_secret_' . uniqid(),
-            'payment_intent_id' => 'pi_' . uniqid(),
-        ];
+            $paymentIntent = $this->stripe->paymentIntents->create([
+                'amount' => $amount * 100, // Convert to cents
+                'currency' => $currency,
+                'customer' => $customer->id,
+                'description' => $description,
+                'automatic_payment_methods' => [
+                    'enabled' => true,
+                ],
+            ]);
+
+            Log::info("Created payment intent for user {$user->id}: {$paymentIntent->id}");
+
+            return [
+                'payment_intent_id' => $paymentIntent->id,
+                'client_secret' => $paymentIntent->client_secret,
+                'amount' => $amount,
+                'currency' => $currency,
+            ];
+
+        } catch (ApiErrorException $e) {
+            Log::error('Stripe payment intent creation failed', [
+                'user_id' => $user->id,
+                'amount' => $amount,
+                'error' => $e->getMessage(),
+            ]);
+            throw new \Exception('Failed to create payment intent: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -179,5 +286,20 @@ class PaymentService
     public function getPlans(): array
     {
         return Plan::active()->ordered()->get()->toArray();
+    }
+
+    /**
+     * Create invoice from Stripe invoice object
+     */
+    protected function createInvoiceFromStripe(User $user, $stripeInvoice): Invoice
+    {
+        return Invoice::create([
+            'user_id' => $user->id,
+            'stripe_invoice_id' => $stripeInvoice->id,
+            'stripe_payment_id' => $stripeInvoice->payment_intent,
+            'amount' => $stripeInvoice->amount_due / 100, // Convert from cents
+            'status' => $stripeInvoice->status === 'paid' ? 'paid' : 'pending',
+            'billing_reason' => 'subscription',
+        ]);
     }
 }
